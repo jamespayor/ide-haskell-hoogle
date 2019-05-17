@@ -28,11 +28,13 @@ type HoogleResponse = ResponseItem[] | {
 }
 
 export class Hoogle {
+  private attempts: number
   private port?: number
   private process?: CP.ChildProcess
   private hoogleBaseUrl = 'http://hoogle.haskell.org/'
 
   constructor() {
+    this.attempts = 0
     atom.config.observe('ide-haskell-hoogle.hoogleType', (val: string) => {
       if (val) {
         this.killProcess()
@@ -89,19 +91,33 @@ export class Hoogle {
 
   @autobind
   private onProcessExit() {
-    console.warn('ide-haskell-hoogle: hoogle died -- will try to restart') // tslint:disable-line: no-console
-    this.spawnProcess()
+    console.warn('ide-haskell-hoogle: hoogle has died. stderr:\n' + this.process.stderr.read())
+    this.process.stderr.end()
+    if (this.attempts > 10) {
+      console.warn('ide-haskell-hoogle: hoogle has died 10 times. Will not try to restart.') // tslint:disable-line: no-console
+    } else {
+      this.attempts += 1
+      console.warn('ide-haskell-hoogle: hoogle died -- will try to restart') // tslint:disable-line: no-console
+      window.setTimeout(() => this.spawnProcess(), this.attempts * 300)
+    }
   }
 
   private spawnProcess() {
-    const cmd = atom.config.get('ide-haskell-hoogle.hooglePath') || 'hoogle'
-    console.log(`ide-haskell-hoogle: starting ${cmd}`) // tslint:disable-line: no-console
-    this.port = Math.floor(Math.random() * (60000 - 10000) + 10000)
+    const projectPath = atom.project.rootDirectories && atom.project.rootDirectories[0].path
+    if (!projectPath) {
+      console.warn('ide-haskell-hoogle: no global project; not starting hoogle')
+      return
+    }
+    console.log('ide-haskell-hoogle: starting hoogle for project "' + projectPath + '" at http://localhost:8080') // tslint:disable-line: no-console
+    // Note: If we want hoogle to be accessible to the user, we should use a standard location.
+    this.port = 8080 // Math.floor(Math.random() * (60000 - 10000) + 10000)
     this.process = CP.spawn(
-      cmd,
-      ['server', '--port', this.port.toString()],
+      'stack',
+      ['hoogle', '--no-setup', '--server', '--', '--local'],
       {
-        stdio: 'ignore',
+        stdio: ['ignore', 'ignore', 'pipe'],
+        cwd: projectPath,
+        detached: false,
       },
     )
     this.process.once('exit', this.onProcessExit) // tslint:disable-line: no-unbound-method
@@ -111,7 +127,8 @@ export class Hoogle {
     if (this.process !== undefined) {
       console.warn('ide-haskell-hoogle: killing hoogle') // tslint:disable-line: no-console
       this.process.removeAllListeners('exit')
-      this.process.kill()
+      // Note (James): When using `stack hoogle`, SIGTERM doesn't actually terminate the underlying hoogle...
+      this.process.kill('SIGINT')
       this.process = undefined
     }
   }

@@ -9,12 +9,13 @@ export const config = {
       { value: 'https://haskell.org/hoogle/', description: 'Remote hoogle. Uses old https://haskell.org/hoogle/' },
     ],
   },
-  hooglePath: {
-    type: 'string',
-    default: 'hoogle',
-    description: 'Path to hoogle executable',
-    order: 20,
-  },
+  // Removed, in favor of using `stack hoogle` consistently.
+  // hooglePath: {
+  //   type: 'string',
+  //   default: 'hoogle',
+  //   description: 'Path to hoogle executable',
+  //   order: 20,
+  // },
   webZoomFactor: {
     type: 'integer',
     description: 'Zoom factor for web view, in %',
